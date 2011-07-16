@@ -1,0 +1,238 @@
+import Data.Int
+import System.Environment
+import Control.Monad.Par
+import Data.Time.Clock (diffUTCTime, getCurrentTime)
+import GHC.Conc (pseq, par)
+
+import Control.Monad.Joinads
+
+-----------------------------------------------------------------------------------------
+-- Utilities & Some sample calculations
+-----------------------------------------------------------------------------------------
+
+-- Evaluates the given argument and measures time needed
+evalWithTimer f = do
+  putStrLn "starting..."
+  start <- getCurrentTime
+  putStrLn $ "Result: " ++ (show f)
+  end <- getCurrentTime
+  putStrLn $ show (end `diffUTCTime` start) ++ " elapsed."
+
+type NumType = Int64
+
+-- Calculates Fibonacci number (sequentially)
+fib :: NumType -> NumType
+fib 0 = 1
+fib 1 = 1
+fib x = fib (x-2) + fib (x-1) + 1
+
+-- Checks whether a number is a prime number (sequentially)
+isPrime :: NumType -> Bool
+isPrime 1 = True
+isPrime 2 = True
+isPrime n = divisible 2
+  where
+    divisible m
+      | n `rem` m == 0 = False
+      | m * m > n = True
+      | otherwise = divisible (m + 1)
+
+-----------------------------------------------------------------------------------------
+-- Parallelism: Performance of Fibonacci using sequential, strategies and ParMonad 
+-----------------------------------------------------------------------------------------
+
+-- Parallel Fibonacci (with treshold 25) implemented using strategies
+parfibStrat :: NumType -> NumType
+parfibStrat n | n < 25 = fib n 
+parfibStrat n = x `par` y `pseq` (x+y)
+  where 
+     x = parfibStrat (n-1)
+     y = parfibStrat (n-2)  
+
+-- Parallel Fibonacci (with treshold 25) implemented using Par monad
+parfibMon :: NumType -> Par NumType
+parfibMon n | n < 25 = return $ fib n 
+parfibMon n = 
+  do 
+     xf <- spawn_$ parfibMon (n-1)
+     y  <-         parfibMon (n-2)  
+     x  <- get xf
+     return (x+y)
+
+-- Main: Run all three versions & print the time
+mainFib = do 
+  -- (Reasonable setting for Intel Core 2 Duo laptop)
+  let size = 33
+
+  putStrLn "\nSequential version:"
+  evalWithTimer $ fib size
+
+  putStrLn "\nVersion using strategies:"
+  evalWithTimer $ parfibStrat size
+
+  putStrLn "\nVersion using the Par monad:"
+  evalWithTimer $ runPar $ parfibMon size
+
+-----------------------------------------------------------------------------------------
+-- Joinad instance for the Parallelism monads
+-----------------------------------------------------------------------------------------
+
+instance MonadZip Par where
+  -- The zipping operation runs both computations in parallel
+  -- (one is spawned in the background) and returns a result
+  -- when both of the computations complete.
+  a `mzip` b = do 
+    af <- spawn_ a
+    br <- b
+    ar <- get af
+    return (ar, br)
+
+instance MonadZero Par where
+  -- A failed computation never terminates (this is the simplest
+  -- implementation, but we could also represent it more explicitly)
+  mzero = block
+
+instance MonadAlias Par where
+  -- Aliasing spawns the computation in the background and returns
+  -- a computation that just reads the result from a mutable variable
+  -- that is created when spawning computation.
+  malias p = do
+    spawn_ p >>= return . get
+
+instance MonadOr Par where
+  -- The operation of a monoid implements a non-deterministic choice operator. 
+  -- (The never-terminating computation behaves as a unit)
+  -- The implementation spawns both computations and waits for the frist result.
+  a `morelse` b = do
+    r <- newBlocking
+    fork (a >>= put_ r)
+    fork (b >>= put_ r)
+    res <- get r
+    return res
+
+-----------------------------------------------------------------------------------------
+-- Utilites: Tree processing (parallel forall predicate)
+-----------------------------------------------------------------------------------------
+
+data Tree a 
+  = Leaf a
+  | Node (Tree a) (Tree a)
+
+makeTree (x:[]) = Leaf x
+makeTree list =
+  case splitAt ((length list) `div` 2) list of 
+  (l1, l2) -> Node (makeTree l1) (makeTree l2)
+
+treeLength (Leaf _) = 1
+treeLength (Node a b) = treeLength a + treeLength b
+
+instance Show a => Show (Tree a) where
+  show (Leaf n) = show n
+  show (Node a b) = "(" ++ (show a) ++ ", " ++ (show b) ++ ")"
+
+-----------------------------------------------------------------------------------------
+-- Example: Testing whether all tree elements are primes
+-----------------------------------------------------------------------------------------
+
+-- Sequential version
+allPrimesSeq :: Tree NumType -> Bool
+allPrimesSeq (Leaf a) = isPrime a
+allPrimesSeq (Node a b) = allPrimesSeq a && allPrimesSeq b
+
+
+-- Parallel version that is written explicitly using the Par monad
+allPrimesPar :: Tree NumType -> Par Bool
+allPrimesPar (Leaf num) = return $ isPrime num
+allPrimesPar (Node left right) = do
+  al' <- spawn_ $ allPrimesPar left
+  ar  <- allPrimesPar right
+  al  <- get al'
+  return (al && ar)
+
+-- Parallel version that is written using 'docase' and behaves the same
+allPrimesJnd :: Tree NumType -> Par Bool
+allPrimesJnd (Leaf num) = return $ isPrime num
+allPrimesJnd (Node left right) = 
+  docase (allPrimesJnd left, allPrimesJnd right) of
+    (a, b) -> return $ a && b
+
+-- Parallel version that adds short-circuiting behavior to the previous
+-- snippet. When the result of one branch is avaialble earlier and 
+-- has the value 'False' we can immediately return 'False'.
+allPrimesShrt :: Tree NumType -> Par Bool
+allPrimesShrt (Leaf num) = return $ isPrime num
+allPrimesShrt (Node left right) = 
+  docase (allPrimesShrt left, allPrimesShrt right) of
+    (?, False) -> return False
+    (False, ?) -> return False
+    (a, b) -> return $ a && b
+ 
+
+-- Parallel version with short-circuiting that is written explicitly
+-- (without the clever use of aliasing, coice and parallel composition).
+-- This is likely a version that programmer would write without joinads.
+allPrimesExpl :: Tree NumType -> Par Bool
+allPrimesExpl tree = do
+    tok <- newCancelToken
+    r <- forall' tok tree
+    cancel tok 
+    return r
+  where 
+    forall' tok (Leaf num) = return $ isPrime num
+    forall' tok (Node left right) = do
+      leftRes <- new
+      rightRes <- new
+      finalRes <- newBlocking
+      forkWith tok (forall' tok left >>= 
+        completed leftRes rightRes finalRes)
+      forkWith tok (forall' tok right >>= 
+        completed rightRes leftRes finalRes)
+      get finalRes
+    
+    completed varA varB fin resA = do
+      put varA resA
+      ( if not resA then put fin False
+        else get varB >>= put fin . (&& resA) )
+
+-----------------------------------------------------------------------------------------
+-- Main: Generate trees for testing & run some examples
+-----------------------------------------------------------------------------------------
+
+mainTree = do
+  -- Generate tree with some random primes & force its evaluation
+  let range = [ 5000000000 .. 5000005000 ] 
+  let primes = [ n | n <- range, isPrime n ] 
+  let tree1 = makeTree primes
+  let tree2 = Node (makeTree primes) (Leaf 256)
+  putStrLn $ "Length of tree #1: " ++ (show $ treeLength tree1)
+  putStrLn $ "Length of tree #2: " ++ (show $ treeLength tree2)
+
+  putStrLn "\nWithout non-prime number (sequential):"
+  evalWithTimer (allPrimesSeq tree1)
+  
+  putStrLn "\nWithout non-prime number (parallel):"
+  evalWithTimer (runPar $ allPrimesPar tree1)
+
+  putStrLn "\nWithout non-prime number (joinads):"
+  evalWithTimer (runPar $ allPrimesJnd tree1)
+
+
+  putStrLn "\nWith non-prime number (joinads):"
+  evalWithTimer (runPar $ allPrimesJnd tree2)
+
+  putStrLn "\nWith non-prime number (shortcircuiting joinads):"
+  evalWithTimer (runPar_ $ allPrimesShrt tree2)
+
+  putStrLn "\nWith non-prime number (explicit shortcircuiting):"
+  evalWithTimer (runPar $ allPrimesExpl tree2)
+    
+
+-- Run both of the samples from this file..
+main = do
+  putStrLn "Note: Program should be executed on multiple"
+  putStrLn "processors using 'parmonad +RTS -N2 -RTS'"
+  putStrLn "\n-------- Comparing baseline performance --------"
+  mainFib
+  putStrLn "\n-------- Tree processing using joinads --------"
+  mainTree
+

@@ -1,0 +1,157 @@
+import Control.Monad (Monad)
+import Control.Monad.Trans
+import Control.Monad.Joinads
+
+-------------------------------------------------------------------------------
+-- Resumption monad: Inspired by Poor Man's Concurrency monad, but implemented
+-- using resumptions (which is a simpler mondel)
+-------------------------------------------------------------------------------
+
+-- A computation has either completed producing value, or failed or it 
+-- hasn't completed and can perform one step (with some effects on the side)
+data Monad m => Resumption m r 
+  = Step (m (Resumption m r))
+  | Done r
+  | Fail
+
+action a = Step (do r <- a; return $ Done r)
+
+run :: Monad m => Resumption m r -> m r
+run (Done r) = return r
+run (Step m) = m >>= run
+run (Fail) = fail "Computation failed"
+
+
+-------------------------------------------------------------------------------
+-- Joinad instance for the Resumption type
+-------------------------------------------------------------------------------
+
+instance Monad m => Monad (Resumption m) where
+  -- Create resumption that has completed
+  return a = Done a
+
+  -- Evaluate the left argument (step-by-step) and then
+  -- conitnue by evaluating the generated steps
+  (Done r) >>= f = Step $ return (f r)
+  (Step s) >>= f = Step (do next <- s; return $ next >>= f)
+  Fail >>= f = Fail
+
+instance MonadTrans Resumption where
+  -- Monad transformer that lifts primitive effectful
+  -- computations into the resumption monad
+  lift = action
+
+instance Monad m => MonadZip (Resumption m) where
+  -- Parallel composition of resumptions - evaluate both arguments
+  -- in parallel, one step at a time, unitl both complete
+  mzip (Done a) (Done b) = Done (a, b)
+  mzip Fail _ = Fail
+  mzip _ Fail = Fail
+  mzip sa sb = Step (do a <- step sa; b <- step sb; return $ mzip a b)
+    where step (Done r) = return $ Done r 
+          step (Fail) = return $ Fail
+          step (Step sa) = sa
+
+instance Monad m => MonadZero (Resumption m) where
+  -- Zero creates a failed computation
+  mzero = Fail
+
+instance Monad m => MonadOr (Resumption m) where
+  -- Choice operator creates a computation that produces a value
+  -- whenever the first of the two produce a value. If none of the 
+  -- computations is done, the evaluation alternates between the two.
+  morelse Fail c = c
+  morelse c Fail = c
+  morelse (Done a) _ = Done a
+  morelse _ (Done a) = Done a
+  morelse (Step sa) b = Step (sa >>= return . (morelse b))
+
+instance Monad m => MonadAlias (Resumption m) where
+  -- At the moment, we do not support aliasing (this would require extending
+  -- the type declaration), so aliasing behaves just like return
+  -- (This means that side-effects are perfomed repeatedly)
+  malias = return
+
+
+-------------------------------------------------------------------------------
+-- Examples: Parallel and sequential composition of computations
+-------------------------------------------------------------------------------
+
+-- Prints the specified string repeatedly and then returns
+-- the value specified as the last argument.
+printLoop :: [Char] -> Integer -> a -> Resumption IO a
+printLoop str count result = do
+  lift $ putStrLn str
+  ( if count == 1 then return result
+    else printLoop str (count - 1) result )
+
+
+-- Compose two computations sequentially using 'do'
+animalsS = do
+  c <- printLoop "meow" 2 "cat" 
+  d <- printLoop "woof" 3 "dog"
+  return $ c ++ " and " ++ d
+
+-- Compose two computations in parallel using 'docase'
+animalsP = docase 
+    ( printLoop "meow" 2 "cat", 
+      printLoop "woof" 3 "dog" ) of
+	(c, d) -> return $ c ++ " and " ++ d 
+
+
+main = do
+  putStrLn "\nSequential composition:"
+  s <- run animalsS
+  putStrLn $ s
+
+  putStrLn "\nParallel composition:"
+  s <- run animalsP
+  putStrLn $ s
+
+-------------------------------------------------------------------------------
+-- Examples: The sample used in the paper
+-------------------------------------------------------------------------------
+
+guard b = if b then return () else mzero
+
+test :: Resumption IO (Maybe Int) -> Resumption IO (Maybe Int) -> Resumption IO Bool
+test c1 c2 = docase (c1, c2) of
+  (Just a, Just b) -> do
+    lift $ print "Both produced value"
+    guard (a == b)
+    return True
+  (_, _) -> do
+    lift $ print "Some value missing"
+    return False
+
+
+-- This shows how the translation would work if it didn't include
+-- additional wrapping when returning values (to implement 'commit points')
+test' c1 c2 = 
+  malias c1 >>= \a1 ->
+  malias c2 >>= \a2 ->
+  ((a1 `mzip` a2 >>= \t -> case t of 
+    (Just a, Just b) -> do 
+        lift $ print "Both produced value"
+        guard (a == b)
+        return True
+    _ -> mzero) `morelse`
+  (a1 `mzip` a2 >>= \_ -> do
+        lift $ print "Some value missing"
+        return False))
+
+
+-- This is the actual translation as used by the 'docase' syntax
+test'' c1 c2 = 
+  malias c1 >>= \a1 ->
+  malias c2 >>= \a2 ->
+  ((a1 `mzip` a2 >>= \t -> case t of 
+    (Just a, Just b) -> 
+      return (do lift $ print "Both produced value"
+                 guard (a == b)
+                 return True)
+    _ -> mzero) `morelse`
+  (a1 `mzip` a2 >>= \_ -> return (do
+                lift $ print "Some value missing"
+                return False)))
+  >>= id

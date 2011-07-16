@@ -1,0 +1,121 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>Control.Monad.Joinads</title><link href="ocean.css" rel="stylesheet" type="text/css" title="Ocean" /><script src="haddock-util.js" type="text/javascript"></script><script type="text/javascript">//<![CDATA[
+window.onload = function () {pageLoad();setSynopsis("mini_Control-Monad-Joinads.html");};
+//]]>
+</script></head><body><div id="package-header"><ul class="links" id="page-menu"><li><a href="index.html">Contents</a></li><li><a href="doc-index.html">Index</a></li></ul><p class="caption" class="empty">&nbsp;</p></div><div id="content"><div id="module-header"><p class="caption">Control.Monad.Joinads</p></div><div id="description"><p class="caption">Description</p><div class="doc"><p>This module defines the <code><a href="Control-Monad-Joinads.html#t:Joinad">Joinad</a></code> type class that is used by the <code>docase</code> notation
+ as described in <em>Extending Monads with Pattern Matching</em>, which can be found at:
+ <a href="http://www.cl.cam.ac.uk/~tp322/papers/docase.html">http://www.cl.cam.ac.uk/~tp322/papers/docase.html</a>.
+ The <code><a href="Control-Monad-Joinads.html#t:Joinad">Joinad</a></code> type class is a combination of operations provided by three distinct
+ type classes (that already appear in some form in various Haskell libraries). To keep
+ the samples self-contained, this module re-defines additional type classes that are 
+ used in the definition. The <code><a href="Control-Monad-Joinads.html#t:Joinad">Joinad</a></code> type class then combines the three other type
+ classes and relates their operations using equations.
+</p><pre> class (MonadAlias m, MonadZip m, MonadOr m) 
+    =&gt; Joinad m
+</pre><p>The individual type classes that are required by a joinad are:
+</p><ul><li> <code><a href="Control-Monad-Joinads.html#t:MonadAlias">MonadAlias</a></code> extends the <code>Monad</code> type class with support for aliasing operation
+   that can be used for controlling the evaluation of monads. For example, a 
+   parallelism monad may use this operation to get a speculative evaluation semantics.
+</li><li> <code><a href="Control-Monad-Joinads.html#t:MonadZip">MonadZip</a></code> extends <code>Monad</code> type class with an additional generalized zipping 
+   operation. The operation is used to combine two values of types <code>m a</code> and 
+   <code>m b</code> into <code>m (a, b)</code>. The operation usually behaves differently than the 
+   operation of this type that can be defined in terms of <code>&gt;&gt;=</code> and <code>return</code>. 
+   In addition, we require the operation to be symmetric.
+</li><li> <code><a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a></code> and <code><a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a></code> add two operations that add monoidal structure to a
+   monad. Together, they replace the standard <code><a href="Control-Monad-Joinads.html#t:MonadPlus">MonadPlus</a></code> type class and specify more
+   clearly the required laws. In particular, the operation of <code><a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a></code> is
+   <em>left-biased</em>.
+</li></ul><p>The type classes are inspired by (or derived from) several existing Haskell libraries:
+</p><ul><li> The types <code><a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a></code>, <code><a href="Control-Monad-Joinads.html#t:MonadPlus">MonadPlus</a></code> and <code><a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a></code> mostly follow the proposal
+   from <a href="http://www.haskell.org/haskellwiki/MonadPlus_reform_proposal">http://www.haskell.org/haskellwiki/MonadPlus_reform_proposal</a>, with the
+   only difference that left-bias of <code><a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a></code> is expressed differently.
+</li><li> The type <code><a href="Control-Monad-Joinads.html#t:MonadZip">MonadZip</a></code> is based on the patch that re-implements monad comprehensions
+   (<a href="http://hackage.haskell.org/trac/ghc/ticket/4370">http://hackage.haskell.org/trac/ghc/ticket/4370</a>), but is also required to be
+   associative and symmetric (together with a few other, less important, equations).
+</li><li> The type <code><a href="Control-Monad-Joinads.html#t:MonadAlias">MonadAlias</a></code> adds an operation that can be viewed as a <code>cojoin</code> of a 
+   comonad. It is similar to the <code>Extend</code> type class from the comonad package
+   <a href="http://hackage.haskell.org/packages/archive/comonad/1.1.0/doc/html/Data-Functor-Extend.html">http://hackage.haskell.org/packages/archive/comonad/1.1.0/doc/html/Data-Functor-Extend.html</a>,
+   although one of the laws is not included (as it is not required by <code>codo</code>) and 
+   several additional laws relate the operation with other operations of joinads.
+</li></ul></div></div><div id="synopsis"><p id="control.syn" class="caption expander" onclick="toggleSection('syn')">Synopsis</p><ul id="section.syn" class="hide" onclick="toggleSection('syn')"><li class="src short"><span class="keyword">class</span> Monad m =&gt; <a href="#t:MonadZero">MonadZero</a> m  <span class="keyword">where</span><ul class="subs"><li><a href="#v:mzero">mzero</a> ::  m a</li></ul></li><li class="src short"><span class="keyword">class</span> <a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a> m =&gt; <a href="#t:MonadPlus">MonadPlus</a> m  <span class="keyword">where</span><ul class="subs"><li><a href="#v:mplus">mplus</a> ::  m a -&gt; m a -&gt; m a</li></ul></li><li class="src short"><span class="keyword">class</span> <a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a> m =&gt; <a href="#t:MonadOr">MonadOr</a> m  <span class="keyword">where</span><ul class="subs"><li><a href="#v:morelse">morelse</a> ::  m a -&gt; m a -&gt; m a</li></ul></li><li class="src short"><span class="keyword">class</span> Monad m =&gt; <a href="#t:MonadZip">MonadZip</a> m  <span class="keyword">where</span><ul class="subs"><li><a href="#v:mzip">mzip</a> ::  m a -&gt; m b -&gt; m (a, b)</li></ul></li><li class="src short"><span class="keyword">class</span> Monad m =&gt; <a href="#t:MonadAlias">MonadAlias</a> m  <span class="keyword">where</span><ul class="subs"><li><a href="#v:malias">malias</a> ::  m a -&gt; m (m a)</li></ul></li><li class="src short"><span class="keyword">class</span> (<a href="Control-Monad-Joinads.html#t:MonadAlias">MonadAlias</a> m, <a href="Control-Monad-Joinads.html#t:MonadZip">MonadZip</a> m, <a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a> m) =&gt; <a href="#t:Joinad">Joinad</a> m </li></ul></div><div id="interface"><h1>Documentation</h1><div class="top"><p class="src"><span class="keyword">class</span> Monad m =&gt; <a name="t:MonadZero" class="def">MonadZero</a> m  <span class="keyword">where</span></p><div class="doc"><p>Monad that also supports an operation representing a <em>failed</em> computation.
+   The failed computation is a value of type 'm a' and it behaves as a zero
+   with respect to the monadic <em>bind</em> operation (as specified by the left and
+   right zero equations).
+</p></div><div class="subs methods"><p class="caption">Methods</p><p class="src"><a name="v:mzero" class="def">mzero</a> ::  m a</p><div class="doc"><p>The operation representing a failed computation (zero).
+ | It should also satisfy two equations:
+</p><pre>       mzero &gt;&gt;= f  =  mzero
+ v &gt;&gt;= \x -&gt; mzero  =  mzero
+</pre></div></div></div><div class="top"><p class="src"><span class="keyword">class</span> <a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a> m =&gt; <a name="t:MonadPlus" class="def">MonadPlus</a> m  <span class="keyword">where</span></p><div class="doc"><p>Extends the <code><a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a></code> type class by adding an associative binary operation 
+   working on <code>m a</code> values that forms a monoid with <code><a href="Control-Monad-Joinads.html#v:mzero">mzero</a></code>. The type class also 
+   specifies that the operation shouldn't be left-biased (which is called left 
+   distributivity law). This replaces original <code><a href="Control-Monad-Joinads.html#t:MonadPlus">MonadPlus</a></code> for non-left-biased instances 
+   (such as <code>[]</code>)
+</p></div><div class="subs methods"><p class="caption">Methods</p><p class="src"><a name="v:mplus" class="def">mplus</a> ::  m a -&gt; m a -&gt; m a</p><div class="doc"><p>The associative operation that forms a monoid (together with <code><a href="Control-Monad-Joinads.html#v:mzero">mzero</a></code>).
+   It should satisfy the laws of a <em>monoid</em>:
+</p><pre>         mzero `mplus` a  =  mzero
+         a `mplus` mzero  =  mzero
+ (a `mplus` b) `mplus` c  =  a `mplus` (b `mplus` c)
+</pre><p>In addition, the operation should satisfy the <em>left distributivity</em> 
+   equation that distinguishes it from the MonadOr type class:
+</p><pre>       a `mplus` b &gt;&gt;= k  =  (a &gt;&gt;= k) `mplus` (b &gt;&gt;= k)
+</pre></div></div></div><div class="top"><p class="src"><span class="keyword">class</span> <a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a> m =&gt; <a name="t:MonadOr" class="def">MonadOr</a> m  <span class="keyword">where</span></p><div class="doc"><p>Extends the <code><a href="Control-Monad-Joinads.html#t:MonadZero">MonadZero</a></code> type class by adding an associative binary operation 
+   working on <code>m a</code> values that forms a monoid with <code><a href="Control-Monad-Joinads.html#v:mzero">mzero</a></code>. The type class also 
+   specifies that the operation should be left-biased (which is called left 
+   catch law). This replaces original <code><a href="Control-Monad-Joinads.html#t:MonadPlus">MonadPlus</a></code> for left-biased instances 
+   (such as <code>Maybe</code> and <code>IO</code>)
+</p></div><div class="subs methods"><p class="caption">Methods</p><p class="src"><a name="v:morelse" class="def">morelse</a> ::  m a -&gt; m a -&gt; m a</p><div class="doc"><p>The associative operation that forms a monoid (together with <code><a href="Control-Monad-Joinads.html#v:mzero">mzero</a></code>).
+   It should satisfy the laws of a <em>monoid</em>:
+</p><pre>           mzero `morelse` a  =  mzero
+           a `morelse` mzero  =  mzero
+ (a `morelse` b) `morelse` c  =  a `morelse` (b `morelse` c)
+</pre><p>In addition, the operation should satisfy the <em>left bias</em> equation
+   that distinguishes it from the <code><a href="Control-Monad-Joinads.html#t:MonadPlus">MonadPlus</a></code> type class:
+</p><pre>     a `morelse` (map f a)  =  a
+</pre></div></div></div><div class="top"><p class="src"><span class="keyword">class</span> Monad m =&gt; <a name="t:MonadZip" class="def">MonadZip</a> m  <span class="keyword">where</span></p><div class="doc"><p><code><a href="Control-Monad-Joinads.html#t:MonadZip">MonadZip</a></code> extends the <code>Monad</code> type class with an additional generalized zipping 
+   operation. The operation is used to combine two values of types <code>m a</code> and 
+   <code>m b</code> into <code>m (a, b)</code>. The operation usually behaves differently than the 
+   monoidal operation that can be defined in terms of <code>&gt;&gt;=</code> and <code>return</code>. In addition,
+   we require the operation to be symmetric.
+</p></div><div class="subs methods"><p class="caption">Methods</p><p class="src"><a name="v:mzip" class="def">mzip</a> ::  m a -&gt; m b -&gt; m (a, b)</p><div class="doc"><p>Generalized zipping operation that is required to be symmetric and associative:
+</p><pre> (a `mzip` b) `mzip` c  =  map assoc (a `mzip` (b `mzip` c))
+            a `mzip` b  =  map swap  (b `mzip` a)
+</pre><p>In addition, the operation should behave nicely with respect to the
+   remaining operations of a <code>Monad</code>:
+</p><pre>  return a `mzip` return b  =  return (a, b)
+                a `mzip` a  =  map (\v -&gt; (v,v)) a
+</pre></div></div></div><div class="top"><p class="src"><span class="keyword">class</span> Monad m =&gt; <a name="t:MonadAlias" class="def">MonadAlias</a> m  <span class="keyword">where</span></p><div class="doc"><p><code><a href="Control-Monad-Joinads.html#t:MonadAlias">MonadAlias</a></code> extends the <code>Monad</code> type class with support for aliasing operation
+   that can be used for controlling the evaluation of monads. For example, a 
+   parallelism monad may use this operation to get a speculative evaluation semantics.
+</p></div><div class="subs methods"><p class="caption">Methods</p><p class="src"><a name="v:malias" class="def">malias</a> ::  m a -&gt; m (m a)</p><div class="doc"><p>An operation that represents an aliasing of computations. When given a computation
+   of type <code>m a</code> it produces a new computation <code>m a</code> (inside the monad <code>m</code>) that
+   represents access to the value of the computation. This may use a mutable 
+   reference cell to share the result once calculated (call-by-need) or implement
+   speculative behavior, etc. The operation should satisfy several equations:
+</p><pre>        malias a &gt;&gt;= id  =  a
+      malias (return a)  =  return (return a)
+ map (map f) (malias a)  =  malias (map f a)
+  malias m &lt;*&gt; malias n  =  map swap (malias m &lt;*&gt; malias n)
+</pre><p>Where: 
+</p><pre> ma &lt;*&gt; mb = ma &gt;&gt;= \a -&gt; mb &gt;&gt;= \b -&gt; (a, b)
+</pre><p>Notably, some of the laws overlap with the laws of <em>computational comonads</em>, but this
+ topic is outside the scope of this documentation.
+</p></div></div></div><div class="top"><p class="src"><span class="keyword">class</span> (<a href="Control-Monad-Joinads.html#t:MonadAlias">MonadAlias</a> m, <a href="Control-Monad-Joinads.html#t:MonadZip">MonadZip</a> m, <a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a> m) =&gt; <a name="t:Joinad" class="def">Joinad</a> m </p><div class="doc"><p><code><a href="Control-Monad-Joinads.html#t:Joinad">Joinad</a></code> type class simply combines <code><a href="Control-Monad-Joinads.html#t:MonadZip">MonadZip</a></code>, <code><a href="Control-Monad-Joinads.html#t:MonadOr">MonadOr</a></code> and <code><a href="Control-Monad-Joinads.html#t:MonadAlias">MonadAlias</a></code> and 
+   relates their operations using additional laws. The type class is required by the
+   <code>docase</code> notation. For example:
+</p><pre> docase (ma, mb) of
+ (0, ?) -&gt; return 0
+ (a, b) -&gt; return (a * b)
+</pre><p>Is translated as follows:
+</p><pre> malias ma &gt;&gt;= \ma -&gt;
+ malias mb &gt;&gt;= \mb -&gt;
+   ( (ma &gt;&gt;= \arg -&gt; case arg of
+        0 -&gt; return (return 0) 
+        otherwise -&gt; mzero) `morelse`
+     (ma `mzip` mb &gt;&gt;= \arg -&gt; case arg of
+        (a, b) -&gt; return (return (a * b))) ) &gt;&gt;= id
+</pre><p>The additional laws that are required to hold about the joinad operations are:
+</p><pre> (malias m &gt;&gt;= f) `mzip` n  =  malias m &gt;&gt;= ((`mzip` n) . f)
+              malias mzero  =  return mzero
+            a `mzip` mzero  =  mzero
+</pre><p>The following distributivity law relates the <code><a href="Control-Monad-Joinads.html#v:mzip">mzip</a></code> and <code><a href="Control-Monad-Joinads.html#v:morelse">morelse</a></code> operation:
+</p><pre> (a `mzip` b) `morelse` (a `mzip` c)  =  malias a &gt;&gt;= \a -&gt; (a `mzip` (b `morelse` c))
+</pre></div></div></div></div><div id="footer"><p>Produced by <a href="http://www.haskell.org/haddock/">Haddock</a> version 2.9.2</p></div></body></html>

@@ -1,0 +1,86 @@
+import Control.Monad.Joinads
+import Control.Monad (Monad, liftM)
+
+-----------------------------------------------------------------------------------------
+-- Joinad instance for the Maybe type
+-----------------------------------------------------------------------------------------
+
+-- Zero (failure) is represented using 'Nothing'
+instance MonadZero Maybe where
+  mzero = Nothing
+
+-- Zipping can only produce a value if 
+-- both arguments contain a value
+instance MonadZip Maybe where
+  mzip (Just a) (Just b) = Just $ (a, b)
+  mzip _ _ = Nothing
+
+-- MonadOr has left-bias, so it takes the value from the
+-- left argument (if possible) and then tries the right argument
+instance MonadOr Maybe where
+  morelse (Just a) _ = Just a
+  morelse _ b = b
+
+-- Aside: We can also define a correct implementation for 
+-- MonadPlus (which doesn't have left biase). The trick is to 
+-- return 'Nothing' if both arguments are 'Just'.
+instance MonadPlus Maybe where 
+  mplus (Just a) Nothing = Just a
+  mplus Nothing (Just b) = Just b
+  mplus _ _ = Nothing
+
+-- Aliasing is not needed, so we use a trivial implementation
+instance MonadAlias Maybe where
+  malias = return
+
+-----------------------------------------------------------------------------------------
+-- Example: Implements the 'or' operation of a three-value 'Kleene logic' 
+-- (see: http://en.wikipedia.org/wiki/Three-valued_logic#Kleene_logic)
+-----------------------------------------------------------------------------------------
+
+-- When one of the arguments is 'True' the result is surely 'True'.
+-- When both are known, we return the usual logical or. Otherwise, 
+-- one argument is unknonwn and the other is 'False', so result is unknown.
+
+kleeneOr :: Maybe Bool -> Maybe Bool -> Maybe Bool
+kleeneOr a b = docase (a, b) of
+  (True, ?) -> return True
+  (?, True) -> return True
+  (a, b)		-> return $ a || b
+
+
+-- The following snippet shows the translated 
+-- version of the above 'docase' expression:
+
+kleeneOrT :: Maybe Bool -> Maybe Bool -> Maybe Bool
+kleeneOrT a b = 
+  malias a >>= \a ->
+  malias b >>= \b ->
+    ( (a >>= \a' -> case a' of 
+                       True -> return (return True)
+                       _ -> mzero) `morelse`
+      (b >>= \b' -> case b' of
+                       True -> return (return True)
+                       _ -> mzero) `morelse`
+      ((a `mzip` b) >>= (\(a, b) -> 
+                       return (return $ a || b))) ) >>= id
+
+-----------------------------------------------------------------------------------------
+-- Main: Generate Kleene or table
+-----------------------------------------------------------------------------------------
+
+showThree  Nothing     = "unknown"
+showThree (Just True)  = "true   "
+showThree (Just False) = "false  "
+
+main :: IO ()
+main = 
+  let opts = [ Just True, Just False, Nothing ] in
+  let prod = [ (a, b) | a <- opts, b <- opts ] in
+  do
+    putStrLn $ "Kleene 'or' operation for three-valued logic:\n"
+    sequence_ (map (\(a, b) -> 
+      let res = kleeneOr a b in
+      putStrLn $ "   " ++ (showThree a) ++ " | " 
+                       ++ (showThree b) ++ " = " 
+                       ++ (showThree $ res)) prod)

@@ -1,0 +1,141 @@
+import Data.Char
+import Control.Applicative (Applicative, pure, (<*>))
+import Control.Monad.Joinads
+
+-------------------------------------------------------------------------------
+-- Parser definition
+-------------------------------------------------------------------------------
+
+-- Non-deterministic parser that also keeps 
+-- track of the number of consumed characters 
+newtype Parser a 
+	= Parser (String -> [(a, Int, String)])
+
+-------------------------------------------------------------------------------
+-- Joinad instance for the Parser type
+-------------------------------------------------------------------------------
+
+instance Monad Parser where
+  -- Returns parsers that returns a value without consuming any inputs
+  return a = Parser (\input -> [(a, 0, input)])
+
+  -- Returns a parser that first runs the first parser and then
+  -- runs the second parser (obtained by calling a function)
+  (Parser p1) >>= f = Parser (\input ->
+    [ (result, n1 + n2, tail) 
+        | (a, n1, input') <- p1 input
+        , let (Parser p2) = f a
+        , (result, n2, tail) <- p2 input' ])
+
+instance MonadZero Parser where
+  -- Returns a parser that always immediately fails
+  mzero = Parser (\_ -> [])
+
+instance MonadOr Parser where 
+  -- Left-biased combination of two parsers - the returned parser first tries
+  -- to run the left argument. Only if that fails, it tries the second one.
+  -- (This is a definition used e.g. in Parsec)
+  morelse (Parser p1) (Parser p2) = Parser (\input ->
+    case p1 input of
+    [] -> p2 input
+    x -> x)
+  
+instance MonadPlus Parser where 
+  -- This is a non-left-biased alterntavie (that's not needed for joinads)
+  -- Returns a parser that non-deterministically returns all options from
+  -- both of the parsers given as arguments.
+  mplus (Parser p1) (Parser p2) = Parser (\input ->
+    p1 input ++ p2 input)
+
+instance MonadZip Parser where 
+  -- Generalized zipping for parsers runs both parsers on the same input
+  -- and returns all succeeding combinations such as the two parsers
+  -- consumed the same number of characters. This corresponds to the
+  -- intersection of languages defined by the parsers.
+  mzip (Parser p1) (Parser p2) = Parser (\input -> 
+    [ ((a, b), n1, tail1) 
+        | (a, n1, tail1) <- p1 input
+        , (b, n2, tail2) <- p2 input
+        , n1 == n2 ])
+
+-- Aliasing is not needed, so we use a trivial implementation
+instance MonadAlias Parser where
+  malias = return
+
+-------------------------------------------------------------------------------
+-- Simple parsers, combintaros & run function
+-------------------------------------------------------------------------------
+
+run (Parser p) input = 
+  [ result | (result, _, tail) <- p input, tail == "" ]
+
+item :: Parser Char
+item = Parser (\input -> case input of
+  "" -> []
+  c:cs -> [(c, 1, cs)])
+
+sat p = do c <- item; if p c then return c else mzero
+char c = sat (c ==)
+notChar c = sat (c /=)
+
+string "" = return ""
+string (s:ss) = do s <- char s; ss <- string ss; return $ s:ss
+
+numeric = many (sat isDigit)
+length9 = times item 9
+startsWith p = p >> many item
+
+times p 0 = return []
+times p n = do a <- p; as <- times p (n - 1); return $ a:as
+
+many p = many1 p `mplus` return []
+many1 p = do a <- p; as <- many p; return $ a:as 
+
+-------------------------------------------------------------------------------
+-- Examples: Using intersection of parsers
+-------------------------------------------------------------------------------
+
+-- A parser that wraps a body (specified as a parser) between 
+-- ballanced number of specified bracket character
+brackets :: Char -> Char -> Parser a -> Parser a
+brackets open close body = do 
+  _ <- char open
+  n <- brackets open close body `mplus` body
+  _ <- char close
+  return n
+
+-- The body can parse anything, which means that it may also consume brackets
+skipBrackets = brackets '(' ')' (many body)
+  where body = item
+
+-- To write body that doesn't consume brackets, we can use 'docase' and 
+-- write intersection of two 'notChar' parsers:
+skipAllBrackets = brackets '(' ')' (many body)
+  where body = docase (notChar '(', notChar ')') of
+                 (c, _) -> return c
+
+-- A valid Cambride phone number matches three validation rules:
+-- it consists of digits, has 10 characters and starts with '1223'.
+-- We can encode the validation using 'docase':
+validPhone = docase 
+    (many (sat isDigit), 
+     times item 10,
+     startsWith (string "1223")) of
+  (num, _, _) -> return num
+
+-------------------------------------------------------------------------------
+-- Main: Run the examples
+-------------------------------------------------------------------------------
+
+main = do
+  putStrLn "Skip brackets"
+  putStrLn $ show $ run skipBrackets "((hello))" 
+
+  putStrLn "Skip all brackets"
+  putStrLn $ show $ run skipAllBrackets "((hello))" 
+  
+  putStrLn "Valid phone (no)?"
+  putStrLn $ show $ run validPhone "1221445566"
+
+  putStrLn "Valid phone (yes)?"
+  putStrLn $ show $ run validPhone "1223445566"
