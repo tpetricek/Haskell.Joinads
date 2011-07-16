@@ -44,8 +44,6 @@ code with the `docase` extension and translates it into standard Haskell'98 sour
 `docase` with calls to standard functions). The pre-processor is based on the [pre-processor
 for arrow syntax][3] implemented by Ross Paterson.
 
-<div style="margin:left-20px">
-
  * **Preprocessor** directory contains the implementation of the pre-processor. It
    can be compiled using the `Makefile` provided and then executed using 
    the command: `joinadsp.exe Sample.jhs > Sample.hs`
@@ -65,7 +63,7 @@ for arrow syntax][3] implemented by Ross Paterson.
    `docase` notation. Zip comprehensions are a generalization of parallel list comprehensions
    and overlap with joinads. For more information see an article in [The Monad.Reader Issue 18][5].
 
-</div>
+
 
   [1]: http://www.cl.cam.ac.uk/~tp322/papers/docase.html
   [2]: http://tomasp.net/blog/speculative-par-monad.aspx
